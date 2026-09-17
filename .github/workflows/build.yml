@@ -58,7 +58,7 @@ jobs:
 
       - name: Show version
         run: |
-          make -s kernelrelease
+          cat out/include/config/kernel.release || true
           strings -a build/Image | grep -m1 -oE 'Linux version [^ ]+' || true
 
       - name: Package AnyKernel3 zip
