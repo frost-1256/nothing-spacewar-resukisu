@@ -111,6 +111,7 @@ BUILD_OPTIONS=(
     CROSS_COMPILE=aarch64-none-linux-gnu-
     CLANG_TRIPLE=aarch64-linux-gnu-
     KSU_VERSION=35144
+    "LOCALVERSION="
     LD=ld.lld
     AR=llvm-ar
     NM=llvm-nm

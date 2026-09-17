@@ -37,8 +37,34 @@ if [ ! -d "$AK3_SRC" ]; then
     git clone --depth 1 https://github.com/osm0sis/AnyKernel3.git "$AK3_SRC"
 fi
 
-MAGISKBOOT="${MAGISKBOOT:-$AK3_SRC/tools/magiskboot}"
-[ -x "$MAGISKBOOT" ] || { echo "missing magiskboot at $MAGISKBOOT" >&2; exit 1; }
+# AnyKernel3 ships ARM magiskboot for on-device use; we need a host binary.
+find_magiskboot() {
+    if [ -n "${MAGISKBOOT:-}" ] && [ -x "$MAGISKBOOT" ]; then echo "$MAGISKBOOT"; return 0; fi
+    if [ -x "$ROOT/tools/magiskboot" ]; then echo "$ROOT/tools/magiskboot"; return 0; fi
+    if command -v magiskboot >/dev/null 2>&1; then command -v magiskboot; return 0; fi
+    local apk="${MAGISK_APK:-$ROOT/build/magisk.apk}" out="$ROOT/build/tools/magiskboot"
+    if [ ! -x "$out" ]; then
+        mkdir -p "$(dirname "$out")"
+        if [ ! -f "$apk" ]; then
+            url=$(curl -s https://api.github.com/repos/topjohnwu/Magisk/releases/latest \
+                | grep -o '"browser_download_url": *"[^"]*Magisk-[^"]*\.apk"' | head -n1 | cut -d'"' -f4)
+            [ -n "$url" ] || { echo "cannot resolve Magisk APK URL" >&2; return 1; }
+            curl -Lf -o "$apk" "$url" || return 1
+        fi
+        python3 - "$apk" "$out" <<'PYEOF' || return 1
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1])
+for name in ("lib/x86_64/libmagiskboot.so", "lib/arm64-v8a/libmagiskboot.so"):
+    try:
+        open(sys.argv[2], "wb").write(z.read(name)); break
+    except KeyError:
+        pass
+PYEOF
+        chmod +x "$out"
+    fi
+    echo "$out"
+}
+MAGISKBOOT="$(find_magiskboot)" || { echo "no host magiskboot available" >&2; exit 1; }
 
 echo "[1/4] unpacking stock boot image"
 cp "$STOCK" "$WORK/boot.img"
