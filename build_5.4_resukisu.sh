@@ -35,10 +35,17 @@ info(){ echo -e "\n[INFO]: $*\n"; }
 die(){ echo -e "\n[ERROR]: $*\n" >&2; exit 1; }
 
 # fetch <dir> <url> [strip-components] -- does nothing if <dir> already exists
+# fetch <dir> <url> [strip-components] [check-file]
+# When <check-file> is given, the toolchain is re-downloaded if that file is
+# missing (protects against a cache that only restored a partial tree).
 fetch(){
-    [ -d "$1" ] && return 0
+    if [ -n "${4:-}" ]; then
+        [ -e "$1/$4" ] && return 0
+    else
+        [ -d "$1" ] && return 0
+    fi
     info "Downloading $(basename "$1")..."
-    mkdir -p "$1"
+    rm -rf "$1"; mkdir -p "$1"
     local z=z; case "$2" in *.xz) z=J;; esac   # tar can't sniff compression off a pipe
     curl -Lf --progress-bar "$2" | tar -x"$z" -C "$1" --strip-components="${3:-0}" \
         || { rm -rf "$1"; die "Failed to download $2"; }
@@ -53,7 +60,18 @@ DEB_PKGS=(build-essential bc bison flex pkg-config git curl tar xz-utils zip unz
 
 install_deps(){
     local missing=() available=() p
-    if command -v rpm &>/dev/null; then
+    # Prefer the native distro manager: some Debian/Ubuntu images also ship
+    # 'rpm', which used to make this take the dnf branch and fail.
+    if command -v apt-get &>/dev/null; then
+        for p in "${DEB_PKGS[@]}"; do
+            [ "$(dpkg-query -W -f='${db:Status-Status}' "$p" 2>/dev/null)" = installed ] || missing+=("$p")
+        done
+        [ "${#missing[@]}" = 0 ] && return 0
+        for p in "${missing[@]}"; do apt-cache show "$p" &>/dev/null && available+=("$p"); done
+        [ "${#available[@]}" = 0 ] && return 0
+        info "Installing: ${available[*]}"
+        sudo apt-get update && sudo apt-get install -y "${available[@]}" || die "apt failed"
+    elif command -v dnf &>/dev/null || command -v yum &>/dev/null; then
         # --whatprovides, not -q: some names are virtual now (zlib-devel -> zlib-ng-compat-devel)
         for p in "${RPM_PKGS[@]}"; do
             rpm -q --whatprovides "$p" &>/dev/null || missing+=("$p")
@@ -61,16 +79,6 @@ install_deps(){
         [ "${#missing[@]}" = 0 ] && return 0
         info "Installing: ${missing[*]}"
         sudo dnf install -y --skip-unavailable "${missing[@]}" || die "dnf failed"
-    elif command -v dpkg &>/dev/null; then
-        for p in "${DEB_PKGS[@]}"; do
-            [ "$(dpkg-query -W -f='${db:Status-Status}' "$p" 2>/dev/null)" = installed ] || missing+=("$p")
-        done
-        [ "${#missing[@]}" = 0 ] && return 0
-        # drop whatever this release no longer ships (e.g. libtinfo5 on Ubuntu 24.04+)
-        for p in "${missing[@]}"; do apt-cache show "$p" &>/dev/null && available+=("$p"); done
-        [ "${#available[@]}" = 0 ] && return 0
-        info "Installing: ${available[*]}"
-        sudo apt update && sudo apt install -y "${available[@]}" || die "apt failed"
     else
         info "Unknown package manager -- install the kernel build dependencies yourself."
     fi
@@ -80,8 +88,8 @@ install_deps(){
 install_deps
 [ -f .gitmodules ] && git submodule update --init --recursive
 
-fetch "${CLANG}" "https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/clang-r383902b.tar.gz"
-fetch "${GCC}" "https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz" 1
+fetch "${CLANG}" "https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/clang-r383902b.tar.gz" "" "bin/clang"
+fetch "${GCC}" "https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz" 1 "bin/aarch64-none-linux-gnu-gcc"
 
 
 # Snapdragon LLVM wants libtinfo.so.5; no current distro ships it. If the compat
