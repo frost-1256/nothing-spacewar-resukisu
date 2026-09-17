@@ -6,12 +6,14 @@
 #
 # Kernel source:   build/Image   (copied there by build_5.4_*.sh)
 # Base ramdisk:    stock/<stock boot image>  (provide your own extraction of the
-#                  Nothing OS 3.2 boot partition; it is NOT distributed here)
+#                  Nothing OS 3.2 boot partition; it is NOT distributed here).
+#                  If it is missing, the AnyKernel3 zip is still produced and the
+#                  boot.img step is skipped (CI use).
 # AnyKernel3:      cloned on demand from osm0sis/AnyKernel3 into build/ak3
 #
 # Env overrides:
 #   STOCK_BOOT=/path/to/stock_boot.img
-#   MAGISKBOOT=/path/to/magiskboot      (defaults to AnyKernel3/tools/magiskboot)
+#   MAGISKBOOT=/path/to/magiskboot
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -30,7 +32,6 @@ case "$VARIANT" in
 esac
 
 [ -f "$IMAGE" ] || { echo "missing $IMAGE (build first)" >&2; exit 1; }
-[ -f "$STOCK" ] || { echo "missing stock boot image: $STOCK" >&2; exit 1; }
 
 if [ ! -d "$AK3_SRC" ]; then
     mkdir -p "$(dirname "$AK3_SRC")"
@@ -64,16 +65,21 @@ PYEOF
     fi
     echo "$out"
 }
-MAGISKBOOT="$(find_magiskboot)" || { echo "no host magiskboot available" >&2; exit 1; }
 
-echo "[1/4] unpacking stock boot image"
-cp "$STOCK" "$WORK/boot.img"
-( cd "$WORK" && "$MAGISKBOOT" unpack boot.img >/dev/null )
-
-echo "[2/4] replacing kernel"
-cp "$IMAGE" "$WORK/kernel"
-( cd "$WORK" && "$MAGISKBOOT" repack boot.img new-boot.img >/dev/null )
-cp "$WORK/new-boot.img" "$BOOT"
+if [ -f "$STOCK" ]; then
+    echo "[1/4] unpacking stock boot image"
+    MAGISKBOOT="$(find_magiskboot)" || { echo "no host magiskboot available" >&2; exit 1; }
+    cp "$STOCK" "$WORK/boot.img"
+    ( cd "$WORK" && "$MAGISKBOOT" unpack boot.img >/dev/null )
+    echo "[2/4] replacing kernel"
+    cp "$IMAGE" "$WORK/kernel"
+    ( cd "$WORK" && "$MAGISKBOOT" repack boot.img new-boot.img >/dev/null )
+    cp "$WORK/new-boot.img" "$BOOT"
+    BOOT_OUT="$BOOT"
+else
+    echo "[1-2/4] no stock boot image at $STOCK - skipping boot.img (AnyKernel3 only)"
+    BOOT_OUT=""
+fi
 
 echo "[3/4] building AnyKernel3 zip"
 cp "$IMAGE" "$AK3_SRC/Image"
@@ -82,4 +88,5 @@ cp "$ROOT/ak3/anykernel.sh" "$AK3_SRC/anykernel.sh"
 
 rm -rf "$WORK"
 echo "[4/4] done:"
-ls -lh "$BOOT" "$ZIP"
+[ -n "$BOOT_OUT" ] && ls -lh "$BOOT_OUT"
+ls -lh "$ZIP"

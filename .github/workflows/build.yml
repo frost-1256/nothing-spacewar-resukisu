@@ -1,0 +1,89 @@
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  kernel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
+      - name: Restore toolchains
+        uses: actions/cache@v4
+        with:
+          path: ~/toolchains
+          key: toolchains-clang-r383902b-armgnu-14.2
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ github.ref }}-
+            ccache-
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential bc bison flex patch pkg-config git curl tar xz-utils \
+            zip unzip cpio rsync kmod perl python3 libssl-dev libelf-dev pahole \
+            libncurses-dev zlib1g-dev libyaml-dev lz4 zstd device-tree-compiler ccache
+
+      - name: Build kernel
+        run: ./build_5.4_resukisu.sh
+
+      - name: Show version
+        run: |
+          make -s kernelrelease
+          strings -a build/Image | grep -m1 -oE 'Linux version [^ ]+' || true
+
+      - name: Package AnyKernel3 zip
+        run: ./repack-boot.sh v4
+
+      - name: Upload Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: Image-${{ github.sha }}
+          path: build/Image
+          if-no-files-found: error
+
+      - name: Upload AnyKernel3 zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: anykernel3-${{ github.sha }}
+          path: Spacewar-ReSukiSU-SUSFSv2-*.zip
+          if-no-files-found: error
+
+      - name: Publish release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 \
+            || gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --generate-notes
+          gh release upload "${GITHUB_REF_NAME}" --clobber \
+            build/Image Spacewar-ReSukiSU-SUSFSv2-*.zip
