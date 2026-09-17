@@ -69,6 +69,18 @@ Install the matching manager APK (`ReSukiSU_v4.2.0-rc2_35144`).
 - See `docs/` for the porting notes, the patch series and the verification logs
   (QEMU boot test, KMI audit, on-device results).
 
+## AI assistance
+
+This fork was developed with an AI coding agent (**opencode**, model
+`deepseek-v4.1-flash`). The agent performed the SUSFS v2 backport and the
+KernelSU/ReSukiSU integration, wrote the build/repack tooling and the
+documentation, and ran the offline verification (patch analysis, QEMU boot
+smoke test, module-KMI audit) under human direction.
+
+All changes were reviewed and the resulting images were booted and tested on a
+real Nothing Phone (1) by the maintainer, but they are provided **as-is** and
+without any warranty — flash at your own risk.
+
 ## Credits
 
 - [simonpunk/susfs4ksu](https://gitlab.com/simonpunk/susfs4ksu) — SUSFS
