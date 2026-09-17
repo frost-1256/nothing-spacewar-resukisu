@@ -163,3 +163,10 @@ arch/arm/boot/dts/vendor
 *.zip
 *.tar.gz
 *.bak
+
+# legacy/local build scripts (not part of the published tree)
+/build_5.4.sh
+/build_5.4_stock.sh
+/build_5.4_sukisu.sh
+/build_5.4_sukisu_v4.sh
+/build_5.4_sukisu_v4_rs.sh
