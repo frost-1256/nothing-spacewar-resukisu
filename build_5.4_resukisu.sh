@@ -15,7 +15,7 @@ set -euo pipefail
 #  SETTINGS -- the only part you normally need to touch
 # ---------------------------------------------------------------------------
 DEFCONFIG="vendor/spacewar-stock_defconfig"
-EXTRA_CONFIGS=(resukisu.config droidspaces.config)
+EXTRA_CONFIGS=(resukisu.config droidspaces.config nomount.config)
 KERNEL_IMAGE="Image"
 USE_OUT_DIR=1
 MENUCONFIG=0
